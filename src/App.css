@@ -153,7 +153,8 @@ button {
   padding: 4px 6px;
 }
 
-.link:hover {
+.link:hover,
+.link.armed {
   color: var(--danger);
 }
 

@@ -16,9 +16,13 @@
         "title": "ClipKeeper",
         "width": 440,
         "height": 600,
-        "resizable": true,
-        "minWidth": 360,
-        "minHeight": 400
+        "resizable": false,
+        "visible": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "center": true,
+        "shadow": true
       }
     ],
     "security": {
@@ -40,6 +44,24 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Utility",
+    "shortDescription": "剪贴板历史工具",
+    "longDescription": "自动保存复制过的文本和图片，用快捷键呼出窗口查看和再次粘贴。",
+    "copyright": "© 2026 Wilber",
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": "-"
+    },
+    "windows": {
+      "nsis": {
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "installMode": "currentUser"
+      }
+    }
   }
 }

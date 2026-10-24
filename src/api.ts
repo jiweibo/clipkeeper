@@ -18,6 +18,10 @@ export const setPinned = (id: number, pinned: boolean) => invoke<void>("set_pinn
 export const deleteClip = (id: number) => invoke<void>("delete_clip", { id });
 export const clearHistory = () => invoke<void>("clear_history");
 
+export const hideWindow = () => invoke<void>("hide_window");
+
 export const onClipsChanged = (cb: () => void) => listen("clips-changed", cb);
+
+export const onWindowShown = (cb: () => void) => listen("window-shown", cb);
 
 export const imageSrc = (clip: Clip) => (clip.imagePath ? convertFileSrc(clip.imagePath) : "");

@@ -4,9 +4,11 @@ import {
   clearHistory,
   copyClip,
   deleteClip,
+  hideWindow,
   imageSrc,
   listClips,
   onClipsChanged,
+  onWindowShown,
   setPinned,
 } from "./api";
 import "./App.css";
@@ -65,6 +67,7 @@ function App() {
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState(0);
   const [toast, setToast] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const toastTimer = useRef<number>(undefined);
@@ -84,6 +87,21 @@ function App() {
       unlisten.then((f) => f());
     };
   }, [refresh]);
+
+  // Every time the window pops up, start fresh at the top of the list.
+  useEffect(() => {
+    const unlisten = onWindowShown(() => {
+      setQuery("");
+      setFilter("all");
+      setSelected(0);
+      listRef.current?.scrollTo({ top: 0 });
+      searchRef.current?.focus();
+      listClips("").then(setClips).catch(console.error);
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
 
   const visible = useMemo(
     () =>
@@ -114,7 +132,8 @@ function App() {
     if (!clip) return;
     try {
       await copyClip(clip.id);
-      flash("已复制到剪贴板");
+      // Back to the previous app, ready for Ctrl/⌘+V.
+      await hideWindow();
     } catch (e) {
       flash(`复制失败：${e}`);
     }
@@ -132,10 +151,23 @@ function App() {
     refresh();
   };
 
+  // First click arms the button, second click within 3s clears. A native
+  // confirm dialog would take focus and dismiss the popup.
+  useEffect(() => {
+    if (!confirmClear) return;
+    const t = window.setTimeout(() => setConfirmClear(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [confirmClear]);
+
   const clearAll = async () => {
-    if (!window.confirm("清空所有未置顶的记录？")) return;
+    if (!confirmClear) {
+      setConfirmClear(true);
+      return;
+    }
+    setConfirmClear(false);
     await clearHistory();
     refresh();
+    flash("已清空未置顶的记录");
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -164,9 +196,10 @@ function App() {
       const i = FILTERS.findIndex((f) => f.key === filter);
       const next = (i + (e.shiftKey ? FILTERS.length - 1 : 1)) % FILTERS.length;
       setFilter(FILTERS[next].key);
-    } else if (e.key === "Escape" && query) {
+    } else if (e.key === "Escape") {
       e.preventDefault();
-      setQuery("");
+      if (query) setQuery("");
+      else hideWindow();
     }
   };
 
@@ -206,8 +239,8 @@ function App() {
             </button>
           ))}
           <span className="spacer" />
-          <button className="link" onClick={clearAll}>
-            清空
+          <button className={confirmClear ? "link armed" : "link"} onClick={clearAll}>
+            {confirmClear ? "再点一次确认清空" : "清空"}
           </button>
         </nav>
       </header>

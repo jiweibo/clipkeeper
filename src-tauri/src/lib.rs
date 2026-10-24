@@ -1,5 +1,6 @@
 mod db;
 mod platform;
+mod shell;
 mod watcher;
 
 use db::{Clip, Store};
@@ -34,6 +35,11 @@ fn copy_clip(store: State<Store>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn hide_window(app: tauri::AppHandle) {
+    shell::hide(&app);
+}
+
+#[tauri::command]
 fn clear_history(store: State<Store>) -> Result<(), String> {
     store.clear_unpinned().map_err(err)
 }
@@ -41,11 +47,19 @@ fn clear_history(store: State<Store>) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be registered first: a second launch just opens the window.
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| shell::show(app)))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![shell::HIDDEN_ARG]),
+        ))
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             app.manage(Store::open(&data_dir, MAX_ITEMS)?);
             watcher::spawn(app.handle().clone());
+            shell::setup(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -53,6 +67,7 @@ pub fn run() {
             set_pinned,
             delete_clip,
             copy_clip,
+            hide_window,
             clear_history
         ])
         .run(tauri::generate_context!())
