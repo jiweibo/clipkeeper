@@ -14,13 +14,21 @@
       {
         "label": "main",
         "title": "ClipKeeper",
-        "width": 420,
-        "height": 560,
-        "resizable": true
+        "width": 440,
+        "height": 600,
+        "resizable": true,
+        "minWidth": 360,
+        "minHeight": 400
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/images/**"
+        ]
+      }
     }
   },
   "bundle": {
