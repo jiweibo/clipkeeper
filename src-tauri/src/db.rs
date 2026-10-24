@@ -120,7 +120,11 @@ impl Store {
                 (ClipKind::Image, String::new(), Some(png), Some(width), Some(height), key)
             }
         };
-        let ts = now_ms();
+        // Strictly increasing, so copies made within the same millisecond
+        // still keep their order.
+        let latest: i64 =
+            conn.query_row("SELECT COALESCE(MAX(created_at), 0) FROM clips", [], |r| r.get(0))?;
+        let ts = now_ms().max(latest + 1);
 
         let existing: Option<i64> = conn
             .query_row("SELECT id FROM clips WHERE hash = ?1", [&hash], |r| r.get(0))
@@ -159,7 +163,7 @@ impl Store {
             "SELECT id, kind, text, image_file, width, height, pinned, created_at
              FROM clips
              WHERE ?1 = '' OR (kind = 'text' AND text LIKE '%' || ?1 || '%' ESCAPE '\\')
-             ORDER BY pinned DESC, created_at DESC
+             ORDER BY pinned DESC, created_at DESC, id DESC
              LIMIT ?2",
         )?;
         let escaped = q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
@@ -207,7 +211,7 @@ impl Store {
         self.remove_where(
             conn,
             "pinned = 0 AND id NOT IN (
-                 SELECT id FROM clips WHERE pinned = 0 ORDER BY created_at DESC LIMIT ?1
+                 SELECT id FROM clips WHERE pinned = 0 ORDER BY created_at DESC, id DESC LIMIT ?1
              )",
             [self.max_items as i64],
         )
@@ -284,6 +288,17 @@ mod tests {
         }
         let texts: Vec<_> = s.list("", 10).unwrap().into_iter().map(|c| c.text).collect();
         assert_eq!(texts, vec!["1", "4", "3"]);
+    }
+
+    #[test]
+    fn keeps_order_within_same_millisecond() {
+        let (s, _) = store(100);
+        for i in 0..50 {
+            s.insert(NewClip::Text(i.to_string())).unwrap();
+        }
+        s.insert(NewClip::Text("7".into())).unwrap();
+        let texts: Vec<_> = s.list("", 3).unwrap().into_iter().map(|c| c.text).collect();
+        assert_eq!(texts, vec!["7", "49", "48"]);
     }
 
     #[test]
