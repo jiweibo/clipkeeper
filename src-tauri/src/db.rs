@@ -56,6 +56,9 @@ pub enum NewClip {
         png: Vec<u8>,
         width: u32,
         height: u32,
+        /// Hash of the raw pixels, so the same picture copied twice is
+        /// recognised even if PNG encoding differs.
+        key: String,
     },
 }
 
@@ -108,15 +111,14 @@ impl Store {
     /// Returns the clip's id.
     pub fn insert(&self, clip: NewClip) -> rusqlite::Result<i64> {
         let conn = self.conn.lock().unwrap();
-        let (kind, text, png, width, height) = match clip {
-            NewClip::Text(t) => (ClipKind::Text, t, None, None, None),
-            NewClip::Image { png, width, height } => {
-                (ClipKind::Image, String::new(), Some(png), Some(width), Some(height))
+        let (kind, text, png, width, height, hash) = match clip {
+            NewClip::Text(t) => {
+                let hash = hash_bytes(t.as_bytes());
+                (ClipKind::Text, t, None, None, None, hash)
             }
-        };
-        let hash = match &png {
-            Some(bytes) => hash_bytes(bytes),
-            None => hash_bytes(text.as_bytes()),
+            NewClip::Image { png, width, height, key } => {
+                (ClipKind::Image, String::new(), Some(png), Some(width), Some(height), key)
+            }
         };
         let ts = now_ms();
 
@@ -297,7 +299,7 @@ mod tests {
     fn image_file_lifecycle() {
         let (s, _) = store(10);
         let id = s
-            .insert(NewClip::Image { png: vec![1, 2, 3], width: 1, height: 1 })
+            .insert(NewClip::Image { png: vec![1, 2, 3], width: 1, height: 1, key: "img".into() })
             .unwrap();
         let path = s.get(id).unwrap().unwrap().image_path.unwrap();
         assert!(Path::new(&path).exists());

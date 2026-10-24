@@ -1,4 +1,6 @@
 mod db;
+mod platform;
+mod watcher;
 
 use db::{Clip, Store};
 use tauri::{Manager, State};
@@ -26,6 +28,12 @@ fn delete_clip(store: State<Store>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn copy_clip(store: State<Store>, id: i64) -> Result<(), String> {
+    let clip = store.get(id).map_err(err)?.ok_or("clip not found")?;
+    watcher::write_back(&clip)
+}
+
+#[tauri::command]
 fn clear_history(store: State<Store>) -> Result<(), String> {
     store.clear_unpinned().map_err(err)
 }
@@ -37,12 +45,14 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             app.manage(Store::open(&data_dir, MAX_ITEMS)?);
+            watcher::spawn(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             list_clips,
             set_pinned,
             delete_clip,
+            copy_clip,
             clear_history
         ])
         .run(tauri::generate_context!())

@@ -24,6 +24,8 @@ serde_json = "1"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sha2 = "0.11.1"
 hex = "0.4.3"
+arboard = "3.7.0"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
@@ -33,3 +35,11 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSArray", "NSEnumerator"] }
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_DataExchange", "Win32_Foundation"] }
