@@ -38,9 +38,15 @@ fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
 pub fn show(app: &AppHandle) {
     let Some(win) = main_window(app) else { return };
     let _ = win.center();
-    let _ = win.show();
-    let _ = win.unminimize();
-    let _ = win.set_focus();
+    #[cfg(target_os = "macos")]
+    let shown = crate::panel::show(app);
+    #[cfg(not(target_os = "macos"))]
+    let shown = false;
+    if !shown {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
     let _ = app.emit(WINDOW_SHOWN, ());
 }
 
@@ -76,6 +82,10 @@ pub fn setup(app: &mut App) -> tauri::Result<()> {
     build_tray(app)?;
 
     let win = main_window(app.handle()).expect("main window is defined in tauri.conf.json");
+    #[cfg(target_os = "macos")]
+    if let Err(e) = crate::panel::setup(&win) {
+        eprintln!("could not convert window to panel: {e}");
+    }
     let handle = app.handle().clone();
     win.on_window_event(move |event| match event {
         // Closing just hides; quitting is in the tray menu.
