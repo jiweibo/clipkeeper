@@ -4,6 +4,7 @@
 //! next to the database, and the row keeps the file name.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -65,7 +66,7 @@ pub enum NewClip {
 pub struct Store {
     conn: Mutex<Connection>,
     image_dir: PathBuf,
-    max_items: usize,
+    max_items: AtomicUsize,
 }
 
 fn now_ms() -> i64 {
@@ -103,7 +104,7 @@ impl Store {
         Ok(Self {
             conn: Mutex::new(conn),
             image_dir,
-            max_items,
+            max_items: AtomicUsize::new(max_items),
         })
     }
 
@@ -200,6 +201,14 @@ impl Store {
         Ok(())
     }
 
+    /// Changes how many unpinned clips are kept, dropping the oldest ones
+    /// right away if the history is now over the limit.
+    pub fn set_max_items(&self, max_items: usize) -> rusqlite::Result<()> {
+        self.max_items.store(max_items, Ordering::Relaxed);
+        let conn = self.conn.lock().unwrap();
+        self.prune(&conn)
+    }
+
     /// Removes every clip that is not pinned.
     pub fn clear_unpinned(&self) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
@@ -213,7 +222,7 @@ impl Store {
             "pinned = 0 AND id NOT IN (
                  SELECT id FROM clips WHERE pinned = 0 ORDER BY created_at DESC, id DESC LIMIT ?1
              )",
-            [self.max_items as i64],
+            [self.max_items.load(Ordering::Relaxed) as i64],
         )
     }
 
@@ -299,6 +308,17 @@ mod tests {
         s.insert(NewClip::Text("7".into())).unwrap();
         let texts: Vec<_> = s.list("", 3).unwrap().into_iter().map(|c| c.text).collect();
         assert_eq!(texts, vec!["7", "49", "48"]);
+    }
+
+    #[test]
+    fn lowering_the_limit_prunes_now() {
+        let (s, _) = store(10);
+        for i in 0..6 {
+            s.insert(NewClip::Text(i.to_string())).unwrap();
+        }
+        s.set_max_items(2).unwrap();
+        let texts: Vec<_> = s.list("", 10).unwrap().into_iter().map(|c| c.text).collect();
+        assert_eq!(texts, vec!["5", "4"]);
     }
 
     #[test]

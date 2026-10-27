@@ -2,14 +2,17 @@ mod db;
 #[cfg(target_os = "macos")]
 mod panel;
 mod platform;
+mod settings;
 mod shell;
 mod watcher;
 
 use db::{Clip, Store};
-use tauri::{Manager, State};
+use serde::Serialize;
+use settings::{Settings, SettingsStore};
+use tauri::{AppHandle, Emitter, Manager, State};
 
-/// Unpinned clips kept before the oldest are dropped.
-const MAX_ITEMS: usize = 500;
+/// Event sent to the UI after settings change, so it can restyle itself.
+const SETTINGS_CHANGED: &str = "settings-changed";
 
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -41,6 +44,59 @@ fn hide_window(app: tauri::AppHandle) {
     shell::hide(&app);
 }
 
+/// Settings as the UI sees them, plus the OS-held launch-at-login flag.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SettingsView {
+    #[serde(flatten)]
+    settings: Settings,
+    launch_at_login: bool,
+}
+
+fn settings_view(app: &AppHandle) -> SettingsView {
+    SettingsView {
+        settings: app.state::<SettingsStore>().get(),
+        launch_at_login: shell::launch_at_login(app),
+    }
+}
+
+#[tauri::command]
+fn get_settings(app: AppHandle) -> SettingsView {
+    settings_view(&app)
+}
+
+/// Validates and applies new settings, then saves them. Anything that
+/// can't be applied (e.g. a shortcut another app owns) is rejected before
+/// saving, so the stored settings always match what's in effect.
+#[tauri::command]
+fn save_settings(app: AppHandle, settings: Settings) -> Result<SettingsView, String> {
+    settings.validate()?;
+    let old = app.state::<SettingsStore>().get();
+    shell::change_shortcut(&app, &old.shortcut, &settings.shortcut)?;
+    if let Err(e) = app.state::<SettingsStore>().save(settings.clone()) {
+        let _ = shell::change_shortcut(&app, &settings.shortcut, &old.shortcut);
+        return Err(e);
+    }
+    if settings.max_items != old.max_items {
+        app.state::<Store>().set_max_items(settings.max_items).map_err(err)?;
+        let _ = app.emit(watcher::CLIPS_CHANGED, ());
+    }
+    let view = settings_view(&app);
+    let _ = app.emit(SETTINGS_CHANGED, &view);
+    Ok(view)
+}
+
+#[tauri::command]
+fn set_launch_at_login(app: AppHandle, enabled: bool) -> Result<SettingsView, String> {
+    shell::set_launch_at_login(&app, enabled)?;
+    Ok(settings_view(&app))
+}
+
+#[tauri::command]
+fn pause_shortcut(app: AppHandle, paused: bool) {
+    shell::set_shortcut_paused(&app, paused);
+}
+
 #[tauri::command]
 fn clear_history(store: State<Store>) -> Result<(), String> {
     store.clear_unpinned().map_err(err)
@@ -63,7 +119,9 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            app.manage(Store::open(&data_dir, MAX_ITEMS)?);
+            let settings = SettingsStore::load(&data_dir);
+            app.manage(Store::open(&data_dir, settings.get().max_items)?);
+            app.manage(settings);
             watcher::spawn(app.handle().clone());
             shell::setup(app)?;
             Ok(())
@@ -74,7 +132,11 @@ pub fn run() {
             delete_clip,
             copy_clip,
             hide_window,
-            clear_history
+            clear_history,
+            get_settings,
+            save_settings,
+            set_launch_at_login,
+            pause_shortcut
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
