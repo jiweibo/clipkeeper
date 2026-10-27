@@ -33,7 +33,8 @@
           "$APPDATA/images/**"
         ]
       }
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,

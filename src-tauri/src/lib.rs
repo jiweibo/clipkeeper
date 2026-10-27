@@ -1,4 +1,6 @@
 mod db;
+#[cfg(target_os = "macos")]
+mod panel;
 mod platform;
 mod shell;
 mod watcher;
@@ -46,14 +48,18 @@ fn clear_history(store: State<Store>) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Must be registered first: a second launch just opens the window.
         .plugin(tauri_plugin_single_instance::init(|app, _, _| shell::show(app)))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![shell::HIDDEN_ARG]),
-        ))
+        ));
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
+
+    builder
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
