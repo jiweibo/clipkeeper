@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-pub const MIN_ITEMS: usize = 50;
+pub const MIN_ITEMS: usize = 100;
 pub const MAX_ITEMS: usize = 10_000;
 
 const THEMES: [&str; 3] = ["system", "light", "dark"];
