@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { applyAppearance, Settings } from "./Settings";
 import {
   Clip,
   clearHistory,
@@ -8,7 +9,10 @@ import {
   imageSrc,
   listClips,
   onClipsChanged,
+  onOpenSettings,
+  onSettingsChanged,
   onWindowShown,
+  getSettings,
   setPinned,
 } from "./api";
 import "./App.css";
@@ -61,7 +65,7 @@ function Highlighted({ text, query }: { text: string; query: string }) {
   );
 }
 
-function App() {
+function History({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -196,6 +200,9 @@ function App() {
       const i = FILTERS.findIndex((f) => f.key === filter);
       const next = (i + (e.shiftKey ? FILTERS.length - 1 : 1)) % FILTERS.length;
       setFilter(FILTERS[next].key);
+    } else if (mod && e.key === ",") {
+      e.preventDefault();
+      onOpenSettings();
     } else if (e.key === "Escape") {
       e.preventDefault();
       if (query) setQuery("");
@@ -241,6 +248,13 @@ function App() {
           <span className="spacer" />
           <button className={confirmClear ? "link armed" : "link"} onClick={clearAll}>
             {confirmClear ? "再点一次确认清空" : "清空"}
+          </button>
+          <button className="icon gear" title={`设置 (${MOD},)`} onClick={onOpenSettings}>
+            <svg viewBox="0 0 20 20">
+              <path d="M3 6h8M15 6h2M3 14h2M9 14h8" />
+              <circle cx="13" cy="6" r="2" />
+              <circle cx="7" cy="14" r="2" />
+            </svg>
           </button>
         </nav>
       </header>
@@ -322,6 +336,28 @@ function App() {
 
       <div className={toast ? "toast show" : "toast"}>{toast}</div>
     </div>
+  );
+}
+
+function App() {
+  const [view, setView] = useState<"history" | "settings">("history");
+
+  useEffect(() => {
+    getSettings().then(applyAppearance).catch(console.error);
+    const subs = [
+      onSettingsChanged(applyAppearance),
+      onWindowShown(() => setView("history")),
+      onOpenSettings(() => setView("settings")),
+    ];
+    return () => {
+      subs.forEach((p) => p.then((f) => f()));
+    };
+  }, []);
+
+  return view === "settings" ? (
+    <Settings onBack={() => setView("history")} />
+  ) : (
+    <History onOpenSettings={() => setView("settings")} />
   );
 }
 

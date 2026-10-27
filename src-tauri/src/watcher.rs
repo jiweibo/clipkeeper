@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db::{hash_bytes, NewClip, Store};
 use crate::platform;
+use crate::settings::SettingsStore;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(400);
 /// Text longer than this (in bytes) is not recorded.
@@ -61,7 +62,8 @@ pub fn spawn(app: AppHandle) {
         let mut last_count = platform::change_count();
         // Seed with whatever is on the clipboard at launch so it isn't
         // re-saved (and bumped to the top) every time the app starts.
-        let mut last_key = capture(&mut clipboard).map(|c| c.key());
+        let save_images = || app.state::<SettingsStore>().get().save_images;
+        let mut last_key = capture(&mut clipboard, save_images()).map(|c| c.key());
 
         loop {
             thread::sleep(POLL_INTERVAL);
@@ -77,7 +79,7 @@ pub fn spawn(app: AppHandle) {
             if platform::should_skip() {
                 continue;
             }
-            let Some(captured) = capture(&mut clipboard) else {
+            let Some(captured) = capture(&mut clipboard, save_images()) else {
                 continue;
             };
             let key = captured.key();
@@ -100,12 +102,16 @@ pub fn spawn(app: AppHandle) {
 }
 
 /// Reads the clipboard, preferring text when both text and an image are
-/// present (e.g. cells copied from a spreadsheet).
-fn capture(clipboard: &mut Clipboard) -> Option<Captured> {
+/// present (e.g. cells copied from a spreadsheet). Images are skipped
+/// entirely when the user has turned them off.
+fn capture(clipboard: &mut Clipboard, with_images: bool) -> Option<Captured> {
     if let Ok(text) = clipboard.get_text() {
         if !text.trim().is_empty() && text.len() <= MAX_TEXT_BYTES {
             return Some(Captured::Text(text));
         }
+    }
+    if !with_images {
+        return None;
     }
     let img = clipboard.get_image().ok()?;
     if img.width == 0 || img.height == 0 || img.width * img.height > MAX_IMAGE_PIXELS {
